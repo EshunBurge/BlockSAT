@@ -1,0 +1,268 @@
+// BlockSAT Prisma Schema
+// Local dev uses SQLite (see .env DATABASE_URL="file:./dev.db").
+// For production, point DATABASE_URL at your Supabase Postgres connection
+// string and change the provider below to "postgresql" (see README).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Prisma Client is generated to lib/generated/prisma by default with this
+// version; see lib/db.ts for the import path.
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PracticeFocus {
+  READING
+  MATH
+  BOTH
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum Subject {
+  READING
+  MATH
+}
+
+enum ReadingTopic {
+  MAIN_IDEA
+  VOCABULARY
+  INFERENCE
+  EVIDENCE
+  AUTHORS_PURPOSE
+  COMMAND_OF_EVIDENCE
+}
+
+enum MathTopic {
+  ALGEBRA
+  GEOMETRY
+  ADVANCED_MATH
+  FUNCTIONS
+  DATA_ANALYSIS
+  WORD_PROBLEMS
+  STATISTICS
+}
+
+enum ChallengeMetric {
+  QUESTIONS_ANSWERED
+  CORRECT_STREAK
+  SCORE_REACHED
+  ROWS_CLEARED
+  GAMES_FINISHED
+  READING_ANSWERED
+  MATH_ANSWERED
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// ---------------------------------------------------------------------------
+// Users / Profiles
+// ---------------------------------------------------------------------------
+
+// Only used when NEXT_PUBLIC_DEV_AUTH="true" (no real Supabase project
+// configured). Mirrors just enough of Supabase auth.users to demo the full
+// authentication flow locally. See lib/auth/dev-auth.ts.
+model DevAuthUser {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String
+  emailVerified   Boolean  @default(false)
+  verifyToken     String?
+  resetToken      String?
+  resetTokenExp   DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model Profile {
+  id                String   @id @default(uuid()) // mirrors Supabase auth.users.id
+  email             String   @unique
+  username          String   @unique
+  avatarUrl         String?
+  role              Role     @default(USER)
+
+  xp                Int      @default(0)
+  level             Int      @default(1)
+  highestScore      Int      @default(0)
+  totalScore        Int      @default(0)
+  gamesPlayed       Int      @default(0)
+  streak            Int      @default(0)
+  longestStreak     Int      @default(0)
+  lastPlayedAt      DateTime?
+
+  questionsAnswered Int      @default(0)
+  correctAnswers    Int      @default(0)
+  readingAnswered   Int      @default(0)
+  readingCorrect    Int      @default(0)
+  mathAnswered      Int      @default(0)
+  mathCorrect       Int      @default(0)
+  avgResponseMs     Int      @default(0)
+
+  longestCombo      Int      @default(0)
+  totalLinesCleared Int      @default(0)
+
+  onboardingDone    Boolean  @default(false)
+  practiceFocus     PracticeFocus @default(BOTH)
+  difficulty        Difficulty    @default(MEDIUM)
+
+  soundEnabled      Boolean  @default(true)
+  musicEnabled      Boolean  @default(true)
+  activeTheme       String   @default("classic")
+  activePieceSkin   String   @default("classic")
+  activeAvatar      String   @default("default")
+  unlockedThemes    String   @default("classic")   // comma-separated slugs
+  unlockedSkins     String   @default("classic")
+  unlockedAvatars   String   @default("default")
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  gameSessions      GameSession[]
+  achievements      UserAchievement[]
+  dailyProgress     UserDailyChallenge[]
+  responses         QuestionResponse[]
+
+  @@index([highestScore])
+  @@index([xp])
+  @@index([streak])
+}
+
+// ---------------------------------------------------------------------------
+// Questions
+// ---------------------------------------------------------------------------
+
+model Question {
+  id           String     @id @default(uuid())
+  subject      Subject
+  readingTopic ReadingTopic?
+  mathTopic    MathTopic?
+  difficulty   Difficulty
+  prompt       String
+  passage      String?
+  choiceA      String
+  choiceB      String
+  choiceC      String
+  choiceD      String
+  correct      String     // "A" | "B" | "C" | "D"
+  explanation  String
+  tags         String?    // comma separated
+  source       String     @default("generated") // generated | admin | import
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  responses    QuestionResponse[]
+
+  @@index([subject, difficulty])
+  @@index([readingTopic])
+  @@index([mathTopic])
+}
+
+model QuestionResponse {
+  id          String   @id @default(uuid())
+  profileId   String
+  profile     Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  correct     Boolean
+  responseMs  Int
+  createdAt   DateTime @default(now())
+
+  @@index([profileId])
+  @@index([questionId])
+}
+
+// ---------------------------------------------------------------------------
+// Game sessions
+// ---------------------------------------------------------------------------
+
+model GameSession {
+  id             String   @id @default(uuid())
+  profileId      String
+  profile        Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  score          Int      @default(0)
+  linesCleared   Int      @default(0)
+  longestCombo   Int      @default(0)
+  questionsCorrect Int    @default(0)
+  questionsTotal Int      @default(0)
+  xpEarned       Int      @default(0)
+  durationMs     Int      @default(0)
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+
+  @@index([profileId])
+  @@index([score])
+}
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String
+  icon        String   @default("trophy")
+  xpReward    Int      @default(100)
+  criteria    String   // JSON-encoded criteria, evaluated in app code
+  createdAt   DateTime @default(now())
+
+  unlockedBy  UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  profileId     String
+  profile       Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime @default(now())
+
+  @@unique([profileId, achievementId])
+}
+
+// ---------------------------------------------------------------------------
+// Daily challenges
+// ---------------------------------------------------------------------------
+
+model DailyChallenge {
+  id          String   @id @default(uuid())
+  date        DateTime // truncated to day
+  title       String
+  description String
+  metric      ChallengeMetric
+  target      Int
+  xpReward    Int      @default(150)
+  createdAt   DateTime @default(now())
+
+  progress    UserDailyChallenge[]
+
+  @@unique([date, metric])
+}
+
+model UserDailyChallenge {
+  id               String   @id @default(uuid())
+  profileId        String
+  profile          Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  dailyChallengeId String
+  dailyChallenge   DailyChallenge @relation(fields: [dailyChallengeId], references: [id], onDelete: Cascade)
+  progress         Int      @default(0)
+  completed        Boolean  @default(false)
+  completedAt      DateTime?
+
+  @@unique([profileId, dailyChallengeId])
+}
